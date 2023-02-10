@@ -170,7 +170,7 @@ train:
       bounds_loss_coef: 0.0001
 task_name: ${task.name}
 experiment: ''
-num_envs: 64
+num_envs: ''
 seed: 42
 torch_deterministic: false
 max_iterations: ''
@@ -182,8 +182,8 @@ graphics_device_id: 0
 num_threads: 4
 solver_type: 1
 num_subscenes: 4
-test: true
-checkpoint: /home/tom/PycharmProjects/IsaacGymEnvs/isaacgymenvs/runs/Ant/nn/Ant.pth
+test: false
+checkpoint: ''
 multi_gpu: false
 wandb_activate: false
 wandb_group: ''

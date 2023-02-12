@@ -7,7 +7,7 @@ physics_engine: ${..physics_engine}
 env: 
   numEnvs: ${resolve_default:4096,${...num_envs}}
   envSpacing: 5
-  episodeLength: 1000
+  episodeLength: 1000 #in env steps
   enableDebugVis: False
 
   clipActions: 1.0
@@ -17,16 +17,21 @@ env:
   # reward parameters
   headingWeight: 0.5
   upWeight: 0.1
+  progressWeight: 1.
 
   # cost parameters
   actionsCost: 0.01
+  accCost: 0.01
   energyCost: 0.05
-  dofVelocityScale: 0.1
-  angularVelocityScale: 0.25
-  contactForceScale: 0.01
   jointsAtLimitCost: 0.25
   deathCost: -1.0
+
   terminationHeight: 0.8
+
+  angularVelocityScale: 0.25
+  contactForceScale: 0.01
+  dofVelocityScale: 0.1
+
 
   asset:
     assetFileName: "mjcf/nv_humanoid.xml"

@@ -35,7 +35,7 @@ import isaacgym
 import os
 import hydra
 import yaml
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 from hydra.utils import to_absolute_path
 import gym
 
@@ -80,6 +80,21 @@ def launch_rlg_hydra(cfg: DictConfig):
     # sets seed. if seed is -1 will pick a random one
     cfg.seed += rank
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=rank)
+
+    with open_dict(cfg):
+        cfg.train.params.config['full_experiment_name'] = cfg.full_experiment_name
+        cfg.task.env['full_experiment_name'] = cfg.full_experiment_name
+        cfg.task.env['headingWeight'] = cfg.headingWeight
+        cfg.task.env['upWeight'] = cfg.upWeight
+        cfg.task.env['progressWeight'] = cfg.progressWeight
+        cfg.task.env['actionsCost'] = cfg.actionsCost
+        cfg.task.env['energyCost'] = cfg.energyCost
+        cfg.task.env['jointsAtLimitCost'] = cfg.jointsAtLimitCost
+        cfg.task.env['deathCost'] = cfg.deathCost
+
+    if cfg['test']:
+        with open_dict(cfg):
+            cfg.task.env.test = True
 
     if cfg.wandb_activate and rank == 0:
         # Make sure to install WandB if you actually use this.

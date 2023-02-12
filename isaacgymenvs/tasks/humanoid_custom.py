@@ -29,7 +29,7 @@
 import numpy as np
 import os
 import torch
-
+import pandas as pd
 from isaacgym import gymtorch
 from isaacgym import gymapi
 from isaacgym.torch_utils import *
@@ -57,6 +57,7 @@ class HumanoidCustom(VecTask):
         self.joints_at_limit_cost_scale = self.cfg["env"]["jointsAtLimitCost"]
         self.death_cost = self.cfg["env"]["deathCost"]
         self.termination_height = self.cfg["env"]["terminationHeight"]
+        self.dof_acc_cost = self.cfg["env"]["accCost"]
 
         self.debug_viz = self.cfg["env"]["enableDebugVis"]
         self.plane_static_friction = self.cfg["env"]["plane"]["staticFriction"]
@@ -67,6 +68,10 @@ class HumanoidCustom(VecTask):
 
         self.cfg["env"]["numObservations"] = 108
         self.cfg["env"]["numActions"] = 21
+
+        self.eval_mode = self.cfg['env'].get('test', False)
+
+        self.progress_weight = self.cfg["env"]["progressWeight"]
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
@@ -219,6 +224,7 @@ class HumanoidCustom(VecTask):
 
     def compute_reward(self, actions):
         self.rew_buf[:], self.reset_buf = compute_humanoid_reward(
+            self,
             self.obs_buf,
             self.reset_buf,
             self.progress_buf,
@@ -234,7 +240,9 @@ class HumanoidCustom(VecTask):
             self.motor_efforts,
             self.termination_height,
             self.death_cost,
-            self.max_episode_length
+            self.max_episode_length,
+            self.progress_weight,
+            self.dof_acc_cost
         )
 
     def compute_observations(self):
@@ -288,6 +296,7 @@ class HumanoidCustom(VecTask):
     def post_physics_step(self):
         self.progress_buf += 1
         self.randomize_buf += 1
+        self.last_dof_vel = self.dof_vel.clone()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         if len(env_ids) > 0:
@@ -322,6 +331,7 @@ class HumanoidCustom(VecTask):
 
 
 def compute_humanoid_reward(
+    task,
     obs_buf,
     reset_buf,
     progress_buf,
@@ -337,35 +347,74 @@ def compute_humanoid_reward(
     motor_efforts,
     termination_height,
     death_cost,
-    max_episode_length
+    max_episode_length,
+    progress_reward_weight,
+    dof_acc_cost_scale
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, float, float, Tensor, Tensor, float, float, float, float, Tensor, float, float, float) -> Tuple[Tensor, Tensor]
 
-    # reward from the direction headed
-    heading_weight_tensor = torch.ones_like(obs_buf[:, 11]) * heading_weight
-    heading_reward = torch.where(obs_buf[:, 11] > 0.8, heading_weight_tensor, heading_weight * obs_buf[:, 11] / 0.8)
+    # reward for being at the direction headed to the commanded position
+    heading_reward = (obs_buf[:, 11] / 0.8).clip(max=1, min=0)
+    heading_reward_scaled = heading_reward * heading_weight
+
 
     # reward for being upright
-    up_reward = torch.zeros_like(heading_reward)
-    up_reward = torch.where(obs_buf[:, 10] > 0.93, up_reward + up_weight, up_reward)
+    height = obs_buf[:, 10].clone()
+    desired_height = 0.93
+    height_diff = (desired_height - height).abs()
+    up_reward = torch.exp(-height_diff)
+    up_reward_scaled = up_reward * up_weight
 
+    # lower actions cost
     actions_cost = torch.sum(actions ** 2, dim=-1)
+    actions_cost = torch.exp(-actions_cost) * actions_cost_scale
+    actions_cost_scaled = actions_cost * actions_cost_scale
 
-    # energy cost reward
-    motor_effort_ratio = motor_efforts / max_motor_effort
-    scaled_cost = joints_at_limit_cost_scale * (torch.abs(obs_buf[:, 12:33]) - 0.98) / 0.02
-    dof_at_limit_cost = torch.sum((torch.abs(obs_buf[:, 12:33]) > 0.98) * scaled_cost * motor_effort_ratio.unsqueeze(0), dim=-1)
+    # dof acc cost
+    dof_acc = (task.dof_vel - task.last_dof_vel) / task.dt
+    dof_acc_cost = torch.exp(-dof_acc.abs())
+    dof_acc_cost_scaled = dof_acc_cost * dof_acc_cost_scale
 
-    electricity_cost = torch.sum(torch.abs(actions * obs_buf[:, 33:54]) * motor_effort_ratio.unsqueeze(0), dim=-1)
+    # dof at limits cost
+    dof_limit_cost = (obs_buf[:, 12:33].abs() - 0.95).clip_(min=0).sum(dim=1)
+    dof_limit_cost = torch.exp(-dof_limit_cost)
+    dof_limit_cost_scaled = dof_limit_cost * joints_at_limit_cost_scale
+
+    # efficiency cost
+    electricity_cost = torch.sum(torch.abs(actions * obs_buf[:, 33:54]), dim=-1)
+    electricity_cost = torch.exp(-electricity_cost)
+    electricity_cost_scaled = electricity_cost * energy_cost_scale
 
     # reward for duration of being alive
-    alive_reward = torch.ones_like(potentials) * 2.0
+    alive_reward = torch.ones_like(potentials)
+    dead_actors = obs_buf[:, 0] < termination_height
+    alive_reward[dead_actors] = 0
+    alive_reward_scaled = alive_reward * -death_cost
 
     # potentials reward
-    progress_reward = potentials - prev_potentials
+    progress_reward = (potentials - prev_potentials).clip(min=0, max=1)
+    progress_reward_scaled = progress_reward * progress_reward_weight
 
-    total_reward = progress_reward + alive_reward + up_reward + heading_reward - \
-        actions_cost_scale * actions_cost - energy_cost_scale * electricity_cost - dof_at_limit_cost
+    # export reward stats
+    if task.eval_mode:
+        exp_name = task.cfg['env'].get('full_experiment_name')
+        path = f'/home/tom/PycharmProjects/IsaacGymEnvs/isaacgymenvs/runs/{exp_name}/rewards'
+        if not os.path.exists(path):
+            os.makedirs(path)
+        unscaled_rewards = {'heading': heading_reward.cpu(), 'up_reward': up_reward.cpu(), 'actions_cost': actions_cost.cpu(),
+                            'dof_limit_cost': dof_limit_cost.cpu(), 'electricity_cost':electricity_cost.cpu(),
+                            'alive_reward': alive_reward.cpu(), 'progress_reward': progress_reward.cpu(),
+                            'dof_acc_cost':dof_acc_cost}
+        unscaled_rewards = {reward: values.mean().item() for reward, values in unscaled_rewards.items()}
+        df = pd.DataFrame(unscaled_rewards, index=[0])
+        if hasattr(task, 'aggr_rwrds'):
+            df = pd.concat((task.aggr_rwrds, df))
+        df.to_csv(path+'/reward_summary')
+        task.aggr_rwrds = df
+
+    # total reward
+    total_reward = torch.mean(torch.stack((progress_reward_scaled, alive_reward_scaled, up_reward_scaled, heading_reward_scaled,
+                              actions_cost_scaled, electricity_cost_scaled, dof_limit_cost_scaled, dof_acc_cost_scaled)), dim=0)
 
     # adjust reward for fallen agents
     total_reward = torch.where(obs_buf[:, 0] < termination_height, torch.ones_like(total_reward) * death_cost, total_reward)

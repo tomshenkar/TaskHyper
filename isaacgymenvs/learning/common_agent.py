@@ -67,7 +67,7 @@ class CommonAgent(a2c_continuous.A2CAgent):
 
         self.network_path = config.get('network_path', "./runs")
         self.network_path = os.path.join(self.network_path, self.config['name'])
-        self.network_path = os.path.join(self.network_path, 'nn')
+        self.network_path = os.path.join(self.network_path, 'nna')
         
         net_config = self._build_net_config()
         self.model = self.network.build(net_config)

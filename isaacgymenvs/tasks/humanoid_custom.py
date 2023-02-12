@@ -372,7 +372,7 @@ def compute_humanoid_reward(
 
     # dof acc cost
     dof_acc = (task.dof_vel - task.last_dof_vel) / task.dt
-    dof_acc_cost = torch.exp(-dof_acc.abs())
+    dof_acc_cost = torch.exp(-dof_acc.abs().mean(dim=1))
     dof_acc_cost_scaled = dof_acc_cost * dof_acc_cost_scale
 
     # dof at limits cost

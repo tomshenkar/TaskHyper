@@ -23,7 +23,7 @@ params:
         fixed_sigma: True
 
     mlp:
-      units: [400, 200, 100]
+      units: [200, 100]
       activation: elu
       d2rl: False
 
@@ -41,7 +41,7 @@ params:
     env_name: rlgpu
     multi_gpu: ${....multi_gpu}
     mixed_precision: True
-    normalize_input: True
+    normalize_input: False
     normalize_value: True
     value_bootstrap: True
     num_actors: ${....task.env.numEnvs}
@@ -55,8 +55,8 @@ params:
     kl_threshold: 0.008
     score_to_win: 20000
     max_epochs: ${resolve_default:1000,${....max_iterations}}
-    save_best_after: 50
-    save_frequency: 100
+    save_best_after: 500
+    save_frequency: 500
     print_stats: True
     grad_norm: 1.0
     entropy_coef: 0.0

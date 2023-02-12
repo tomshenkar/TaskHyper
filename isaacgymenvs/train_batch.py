@@ -8,11 +8,12 @@ import numpy as np
 import pandas as pd
 from hydra import compose, initialize
 from omegaconf import DictConfig, OmegaConf
-NUM_ITERS = 10
+from tqdm import tqdm
+NUM_ITERS = 10000
 
 if __name__ == "__main__":
-    for run_idx in range(NUM_ITERS):
-        weights = torch.rand(7)
+    for run_idx in tqdm(range(NUM_ITERS)):
+        weights = torch.rand(8)
         weights /= weights.sum()
         heading_w = weights[0]
         up_w = weights[1]
@@ -22,12 +23,15 @@ if __name__ == "__main__":
         limits_w = weights[5]
         death_w = weights[6]
         acc_w = weights[7]
+        exp_name = str([round(w.item(), 2) for w in weights])
+        exp_name = exp_name.replace(' ', '').replace('[', '').replace(']', '').replace('.', '_').replace(',', '-')
+        # exp_name = 'ted'
         p = subprocess.run(
             [
                 "python",
                 "train.py",
                 "task=HumanoidCustom",
-                "+full_experiment_name=ted",
+                f"+full_experiment_name={exp_name}",
                 f"+headingWeight={heading_w}",
                 f"+upWeight={up_w}",
                 f"+progressWeight={progress_w}",
@@ -44,7 +48,7 @@ if __name__ == "__main__":
                 "python",
                 "train.py",
                 "task=HumanoidCustom",
-                "+full_experiment_name=ted",
+                f"+full_experiment_name={exp_name}",
                 f"+headingWeight={heading_w}",
                 f"+upWeight={up_w}",
                 f"+progressWeight={progress_w}",
@@ -54,7 +58,6 @@ if __name__ == "__main__":
                 f"+deathCost={death_w}",
                 f"+accCost={acc_w}",
                 "test=True",
-                "checkpoint="
-                # "" # add line that will resume to the previous policy
+                f"checkpoint=runs/{exp_name}/nn/HumanoidCustom.pth"
             ]
         )

@@ -82,15 +82,16 @@ def launch_rlg_hydra(cfg: DictConfig):
     cfg.seed = set_seed(cfg.seed, torch_deterministic=cfg.torch_deterministic, rank=rank)
 
     with open_dict(cfg):
-        cfg.train.params.config['full_experiment_name'] = cfg.full_experiment_name
-        cfg.task.env['full_experiment_name'] = cfg.full_experiment_name
-        cfg.task.env['headingWeight'] = cfg.headingWeight
-        cfg.task.env['upWeight'] = cfg.upWeight
-        cfg.task.env['progressWeight'] = cfg.progressWeight
-        cfg.task.env['actionsCost'] = cfg.actionsCost
-        cfg.task.env['energyCost'] = cfg.energyCost
-        cfg.task.env['jointsAtLimitCost'] = cfg.jointsAtLimitCost
-        cfg.task.env['deathCost'] = cfg.deathCost
+        cfg.train.params.config['full_experiment_name'] = cfg.get('full_experiment_name', 'ted')
+        cfg.task.env['full_experiment_name'] = cfg.get('full_experiment_name', 'ted')
+        cfg.task.env['headingWeight'] = cfg.get('headingWeight', 0.1)
+        cfg.task.env['upWeight'] = cfg.get('upWeight', 0.1)
+        cfg.task.env['progressWeight'] = cfg.get('progressWeight', 0.1)
+        cfg.task.env['actionsCost'] = cfg.get('actionsCost', 0.1)
+        cfg.task.env['energyCost'] = cfg.get('energyCost', 0.1)
+        cfg.task.env['jointsAtLimitCost'] = cfg.get('jointsAtLimitCost', 0.1)
+        cfg.task.env['deathCost'] = cfg.get('deathCost', 0.1)
+        cfg.task.env['accCost'] = cfg.get('accCost', 0.1)
 
     if cfg['test']:
         with open_dict(cfg):
